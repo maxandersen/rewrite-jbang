@@ -25,5 +25,6 @@ and just use `rewrite` directly, i.e.:
 
 
 Limitations: 
-	- does not (yet) offer to refer to dependencies
-	- totally just slammed together code a slow sunday morning!
+
+* does not (yet) offer to refer to dependencies
+* totally just slammed together code a slow sunday morning! 
