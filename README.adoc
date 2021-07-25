@@ -7,12 +7,12 @@ It lets you run openrewrite on any kind of project.
 
 How to run: 
 
-1) Install jbang (https://jbang.dev/downloads)
-2) You can list recipes using:
+1. Install jbang (https://jbang.dev/downloads)
+2. You can list recipes using:
 ```
 jbang rewrite@maxandersen/rewrite-jbang discover
 ```
-3) Try run it with a few recipes: 
+3. Try run it with a few recipes: 
 
 ```
 jbang rewrite@maxandersen/rewrite-jbang --recipes org.openrewrite.java.cleanup.Cleanup,org.openrewrite.java.format.AutoFormat
