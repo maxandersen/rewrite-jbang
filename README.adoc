@@ -18,7 +18,7 @@ jbang rewrite@maxandersen/rewrite-jbang discover
 jbang rewrite@maxandersen/rewrite-jbang --recipes org.openrewrite.java.cleanup.Cleanup,org.openrewrite.java.format.AutoFormat
 ```
 
-You can also install the script using: `jbang app install rewrite@maxandersen/rewrite-jbang`
+You can also install the script using: `jbang app install  https://github.com/maxandersen/rewrite-jbang/blob/master/rewrite.java`
 and just use `rewrite` directly, i.e.:
 
 `rewrite --recipes org.openrewrite.java.cleanup.Cleanup,org.openrewrite.java.format.AutoFormat --dry-run`
