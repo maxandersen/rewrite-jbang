@@ -1,0 +1,9 @@
+{
+  "catalogs": {},
+  "aliases": {
+    "rewrite": {
+      "script-ref": "rewrite.java"
+    }
+  },
+  "templates": {}
+}
