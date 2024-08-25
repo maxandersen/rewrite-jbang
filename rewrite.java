@@ -1,5 +1,5 @@
 ///usr/bin/env jbang "$0" "$@" ; exit $?
-//DEPS info.picocli:picocli:4.5.0
+//DEPS info.picocli:picocli:4.7.6
 //DEPS org.slf4j:slf4j-nop:2.0.16
 
 //DEPS org.openrewrite:rewrite-core:7.9.0
