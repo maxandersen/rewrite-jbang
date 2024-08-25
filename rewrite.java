@@ -291,7 +291,7 @@ class rewrite implements Callable<Integer> {
 
         Path baseDir = Path.of(".").toAbsolutePath(); // TODO: proper basedir?
 
-        List<SourceFile> sourceFiles = new ArrayList<>(JavaParser.fromJavaVersion().relaxedClassTypeMatching(true)
+        List<SourceFile> sourceFiles = new ArrayList<>(JavaParser.fromJavaVersion()
                 .styles(styles)
                 .classpath(new HashSet<String>().stream().distinct().map(java.nio.file.Paths::get).collect(toList()))
                 .logCompilationWarningsAndErrors(true).build().parse(javaSources, baseDir, ctx));
