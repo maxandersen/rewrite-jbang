@@ -1,4 +1,6 @@
 ///usr/bin/env jbang "$0" "$@" ; exit $?
+//COMPILE_OPTIONS -Xlint:deprecation
+
 //DEPS info.picocli:picocli:4.7.6
 //DEPS org.slf4j:slf4j-nop:2.0.16
 //DEPS org.apache.maven:maven-core:3.9.9
