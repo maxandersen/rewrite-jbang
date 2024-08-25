@@ -291,7 +291,7 @@ class rewrite implements Callable<Integer> {
         javaSourcePaths.forEach(path -> javaSources.addAll(listJavaSources(path)));
 
         ExecutionContext ctx = executionContext();
-        info("Parsing Java files... in " + javaSources);
+        info("Parsing Java files in " + javaSources);
 
         List<SourceFile> sourceFiles = new ArrayList<>(JavaParser.fromJavaVersion()
                 .styles(styles)
@@ -423,31 +423,31 @@ class rewrite implements Callable<Integer> {
         if (results.isNotEmpty()) {
             for (Result result : results.generated) {
                 assert result.getAfter() != null;
-                getLog().warn("Generated new file " +
-                        result.getAfter().getSourcePath().normalize() +
-                        " by:");
+                getLog().warn("Generated new file "
+                        + result.getAfter().getSourcePath().normalize()
+                        + " by:");
                 logRecipesThatMadeChanges(result);
             }
             for (Result result : results.deleted) {
                 assert result.getBefore() != null;
-                getLog().warn("Deleted file " +
-                        result.getBefore().getSourcePath().normalize() +
-                        " by:");
+                getLog().warn("Deleted file "
+                        + result.getBefore().getSourcePath().normalize()
+                        + " by:");
                 logRecipesThatMadeChanges(result);
             }
             for (Result result : results.moved) {
                 assert result.getAfter() != null;
                 assert result.getBefore() != null;
-                getLog().warn("File has been moved from " +
-                        result.getBefore().getSourcePath().normalize() + " to " +
-                        result.getAfter().getSourcePath().normalize() + " by:");
+                getLog().warn("File has been moved from "
+                        + result.getBefore().getSourcePath().normalize() + " to "
+                        + result.getAfter().getSourcePath().normalize() + " by:");
                 logRecipesThatMadeChanges(result);
             }
             for (Result result : results.refactoredInPlace) {
                 assert result.getBefore() != null;
-                getLog().warn("Changes have been made to " +
-                        result.getBefore().getSourcePath().normalize() +
-                        " by:");
+                getLog().warn("Changes have been made to "
+                        + result.getBefore().getSourcePath().normalize()
+                        + " by:");
                 logRecipesThatMadeChanges(result);
             }
 
