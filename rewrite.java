@@ -3,16 +3,15 @@
 //DEPS org.slf4j:slf4j-nop:2.0.16
 //DEPS org.apache.maven:maven-core:3.9.9
 
-//DEPS org.openrewrite:rewrite-core:7.17.3
-//DEPS org.openrewrite:rewrite-java:7.17.3
-//DEPS org.openrewrite:rewrite-java-8:7.17.3
-//DEPS org.openrewrite:rewrite-java-11:7.17.3
-//DEPS org.openrewrite:rewrite-xml:7.17.3
-//DEPS org.openrewrite:rewrite-maven:7.17.3
-//DEPS org.openrewrite:rewrite-properties:7.17.3
-//DEPS org.openrewrite:rewrite-yaml:7.17.3
-
-
+//DEPS org.openrewrite:rewrite-bom:7.22.0@pom
+//DEPS org.openrewrite:rewrite-core
+//DEPS org.openrewrite:rewrite-java
+//DEPS org.openrewrite:rewrite-java-8
+//DEPS org.openrewrite:rewrite-java-11
+//DEPS org.openrewrite:rewrite-xml
+//DEPS org.openrewrite:rewrite-maven
+//DEPS org.openrewrite:rewrite-properties
+//DEPS org.openrewrite:rewrite-yaml
 
 import static java.lang.System.err;
 import static java.lang.System.out;
