@@ -71,6 +71,8 @@ class rewrite implements Callable<Integer> {
 
     private static final String RECIPE_NOT_FOUND_EXCEPTION_MSG = "Could not find recipe '%s' among available recipes";
 
+    private final Path baseDir = Path.of(".").toAbsolutePath(); // TODO: proper basedir?
+
     @Option(names = "--recipes", split = ",")
     Set<String> activeRecipes = emptySet();
 
@@ -114,7 +116,7 @@ class rewrite implements Callable<Integer> {
         });
     }
 
-    protected Maven parseMaven(Path baseDir, ExecutionContext ctx) {
+    protected Maven parseMaven(ExecutionContext ctx) {
         List<Path> allPoms = new ArrayList<>();
         allPoms.add(baseDir);
 
@@ -289,8 +291,6 @@ class rewrite implements Callable<Integer> {
         ExecutionContext ctx = executionContext();
         info("Parsing Java files... in " + javaSources);
 
-        Path baseDir = Path.of(".").toAbsolutePath(); // TODO: proper basedir?
-
         List<SourceFile> sourceFiles = new ArrayList<>(JavaParser.fromJavaVersion()
                 .styles(styles)
                 .classpath(new HashSet<String>().stream().distinct().map(java.nio.file.Paths::get).collect(toList()))
@@ -337,7 +337,7 @@ class rewrite implements Callable<Integer> {
 
         if (recipeTypes.contains(MavenVisitor.class)) {
             info("Parsing POM...");
-            Maven pomAst = parseMaven(baseDir, ctx);
+            Maven pomAst = parseMaven(ctx);
             sourceFiles.add(pomAst);
         } else {
             info("Skipping Maven POM files because there are no active Maven recipes.");
