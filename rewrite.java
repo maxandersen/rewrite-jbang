@@ -578,16 +578,6 @@ class rewrite implements Callable<Integer> {
         @Option(names = "recursion", defaultValue = "0")
         int recursion;
 
-        /**
-         * Whether to enter an interactive shell to explore available recipes. For example:<br>
-         * {@code ./mvnw rewrite:discover -Dinteractive}
-         */
-        // @Option(names = "interactive", defaultValue = "false")
-        //boolean interactive;
-
-        // @Component
-        // private Prompter prompter;
-
         rewrite getLog() {
             return rewrite;
         }
@@ -599,12 +589,7 @@ class rewrite implements Callable<Integer> {
             if (recipe != null) {
                 RecipeDescriptor rd = getRecipeDescriptor(recipe, availableRecipeDescriptors);
                 writeRecipeDescriptor(rd, detail, 0, 0);
-            } /*else if (interactive) {
-                getLog().info("Entering interactive mode, Ctrl-C to exit...");
-                RecipeDescriptorTreePrompter treePrompter = new RecipeDescriptorTreePrompter(prompter);
-                RecipeDescriptor rd = treePrompter.execute(availableRecipeDescriptors);
-                writeRecipeDescriptor(rd, true, 0, 0);
-            } */ else {
+            } else {
                 Collection<RecipeDescriptor> activeRecipeDescriptors = new HashSet<>();
                 for (String activeRecipe : rewrite.activeRecipes) {
                     RecipeDescriptor rd = getRecipeDescriptor(activeRecipe, availableRecipeDescriptors);
