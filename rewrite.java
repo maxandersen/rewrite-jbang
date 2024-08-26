@@ -98,6 +98,11 @@ class rewrite implements Callable<Integer> {
     @Option(names = "--dry-run", defaultValue = "false")
     boolean dryRun;
 
+    public static void main(String... args) {
+        int exitCode = new CommandLine(new rewrite()).execute(args);
+        System.exit(exitCode);
+    }
+
     Environment environment() {
 
         Environment.Builder env = Environment.builder().scanRuntimeClasspath().scanUserHome();
@@ -594,11 +599,6 @@ class rewrite implements Callable<Integer> {
         if (t != null) {
             t.printStackTrace(err);
         }
-    }
-
-    public static void main(String... args) {
-        int exitCode = new CommandLine(new rewrite()).execute(args);
-        System.exit(exitCode);
     }
 
     public static RecipeDescriptor getRecipeDescriptor(String recipe, Collection<RecipeDescriptor> recipeDescriptors) {
