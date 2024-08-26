@@ -265,6 +265,11 @@ class rewrite implements Callable<Integer> {
         var env = environment();
 
         var recipe = env.activateRecipes(activeRecipes);
+        if (recipe.getRecipeList().size() == 0) {
+            getLog().warn("No recipes were activated. " +
+                    "Activate a recipe on the command line with '--recipes com.fully.qualified.RecipeClassName'");
+            return new ResultsContainer(baseDir, emptyList());
+        }
 
         List<NamedStyles> styles;
         styles = env.activateStyles(activeStyles);
