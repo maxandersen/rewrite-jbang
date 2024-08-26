@@ -1,30 +1,36 @@
-# Open Rewrite as a jbang script
+# OpenRewrite as a jbang script
 
 As an experiment from asking https://github.com/openrewrite/rewrite/discussions/834
 I made this little script which is 97% same as the code found in https://github.com/openrewrite/rewrite-maven-plugin.
 
-It lets you run openrewrite on any kind of project.
+It lets you run OpenRewrite on any kind of project.
 
 How to run: 
 
-1. Install jbang (https://jbang.dev/downloads)
+1. Install `jbang` (https://jbang.dev/download)
 2. You can list recipes using:
-```
+
+[source,sh]
+----
 jbang rewrite@maxandersen/rewrite-jbang discover
-```
+----
+
 3. Try run it with a few recipes: 
 
-```
-jbang rewrite@maxandersen/rewrite-jbang --recipes org.openrewrite.java.cleanup.Cleanup,org.openrewrite.java.format.AutoFormat
-```
+[source,sh]
+----
+jbang rewrite@maxandersen/rewrite-jbang --recipes org.openrewrite.staticanalysis.CodeCleanup,org.openrewrite.java.format.AutoFormat
+----
 
 You can also install the script using: `jbang app install  https://github.com/maxandersen/rewrite-jbang/blob/master/rewrite.java`
 and just use `rewrite` directly, i.e.:
 
-`rewrite --recipes org.openrewrite.java.cleanup.Cleanup,org.openrewrite.java.format.AutoFormat --dry-run`
-
+[source,sh]
+----
+rewrite --recipes org.openrewrite.staticanalysis.CodeCleanup,org.openrewrite.java.format.AutoFormat --dry-run
+----
 
 Limitations: 
 
-* does not (yet) offer to refer to dependencies
-* totally just slammed together code a slow sunday morning! 
+* Does not (yet) offer to refer to dependencies
+* Totally just slammed together code a slow sunday morning! 

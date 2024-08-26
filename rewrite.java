@@ -1,75 +1,81 @@
 ///usr/bin/env jbang "$0" "$@" ; exit $?
-//DEPS info.picocli:picocli:4.5.0
-//DEPS org.slf4j:slf4j-nop:1.7.25
+//COMPILE_OPTIONS -Xlint:deprecation
 
-//DEPS org.openrewrite:rewrite-core:7.9.0
-//DEPS org.openrewrite:rewrite-java:7.9.0
-//DEPS org.openrewrite:rewrite-java-8:7.9.0
-//DEPS org.openrewrite:rewrite-java-11:7.9.0
-//DEPS org.openrewrite:rewrite-xml:7.9.0
-//DEPS org.openrewrite:rewrite-maven:7.9.0
-//DEPS org.openrewrite:rewrite-properties:7.9.0
-//DEPS org.openrewrite:rewrite-yaml:7.9.0
+//DEPS info.picocli:picocli:4.7.6
+//DEPS org.slf4j:slf4j-nop:2.0.16
+//DEPS org.apache.maven:maven-core:3.9.9
+
+//DEPS org.openrewrite:rewrite-bom:7.40.8@pom
+//DEPS org.openrewrite:rewrite-core
+//DEPS org.openrewrite:rewrite-java
+//DEPS org.openrewrite:rewrite-java-8
+//DEPS org.openrewrite:rewrite-java-11
+//DEPS org.openrewrite:rewrite-xml
+//DEPS org.openrewrite:rewrite-maven
+//DEPS org.openrewrite:rewrite-properties
+//DEPS org.openrewrite:rewrite-yaml
 
 
 
-import static java.lang.System.err;
-import static java.lang.System.out;
-import static java.util.Collections.emptyList;
-import static java.util.Collections.emptySet;
-import static java.util.stream.Collectors.toList;
-
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.Callable;
-import java.util.stream.Stream;
-
-import org.openrewrite.ExecutionContext;
-import org.openrewrite.InMemoryExecutionContext;
-import org.openrewrite.Recipe;
-import org.openrewrite.Result;
-import org.openrewrite.SourceFile;
-import org.openrewrite.Validated;
+import org.apache.maven.execution.DefaultMavenExecutionRequest;
+import org.apache.maven.execution.MavenExecutionRequest;
+import org.apache.maven.model.Repository;
+import org.apache.maven.settings.crypto.DefaultSettingsDecryptionRequest;
+import org.apache.maven.settings.crypto.SettingsDecryptionRequest;
+import org.apache.maven.settings.crypto.SettingsDecryptionResult;
+import org.openrewrite.*;
 import org.openrewrite.config.Environment;
 import org.openrewrite.config.OptionDescriptor;
 import org.openrewrite.config.RecipeDescriptor;
 import org.openrewrite.internal.StringUtils;
 import org.openrewrite.java.JavaParser;
 import org.openrewrite.java.JavaVisitor;
+import org.openrewrite.marker.Generated;
 import org.openrewrite.maven.MavenExecutionContextView;
 import org.openrewrite.maven.MavenParser;
 import org.openrewrite.maven.MavenSettings;
 import org.openrewrite.maven.MavenVisitor;
-import org.openrewrite.maven.tree.Maven;
+import org.openrewrite.maven.internal.RawRepositories;
+import org.openrewrite.maven.tree.ProfileActivation;
 import org.openrewrite.properties.PropertiesParser;
 import org.openrewrite.properties.PropertiesVisitor;
 import org.openrewrite.shaded.jgit.util.FileUtils;
 import org.openrewrite.style.NamedStyles;
 import org.openrewrite.xml.XmlParser;
 import org.openrewrite.xml.XmlVisitor;
+import org.openrewrite.xml.tree.Xml;
 import org.openrewrite.yaml.YamlParser;
 import org.openrewrite.yaml.YamlVisitor;
-
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
+
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.*;
+import java.util.concurrent.Callable;
+import java.util.stream.Stream;
+
+import static java.lang.System.err;
+import static java.lang.System.out;
+import static java.util.Collections.emptyList;
+import static java.util.Collections.emptySet;
+import static java.util.stream.Collectors.joining;
+import static java.util.stream.Collectors.toList;
 
 @Command(name = "rewrite", mixinStandardHelpOptions = true, version = "rewrite 0.1", description = "rewrite made with jbang", subcommands = rewrite.rewriteDiscover.class)
 class rewrite implements Callable<Integer> {
 
     private static final String RECIPE_NOT_FOUND_EXCEPTION_MSG = "Could not find recipe '%s' among available recipes";
+
+    private final Path baseDir = Path.of(".").toAbsolutePath(); // TODO: proper basedir?
 
     @Option(names = "--recipes", split = ",")
     Set<String> activeRecipes = emptySet();
@@ -92,6 +98,11 @@ class rewrite implements Callable<Integer> {
     @Option(names = "--dry-run", defaultValue = "false")
     boolean dryRun;
 
+    public static void main(String... args) {
+        int exitCode = new CommandLine(new rewrite()).execute(args);
+        System.exit(exitCode);
+    }
+
     Environment environment() {
 
         Environment.Builder env = Environment.builder().scanRuntimeClasspath().scanUserHome();
@@ -99,83 +110,96 @@ class rewrite implements Callable<Integer> {
         return env.build();
     }
 
-    /**
-     * Maven dependency resolution has a few bugs that lead to the log filling up
-     * with (recoverable) errors. While we work on fixing those issues, set this to
-     * 'true' during maven parsing to avoid log spam
-     */
-    protected boolean suppressWarnings;
-
     protected ExecutionContext executionContext() {
         return new InMemoryExecutionContext(t -> {
-            if (!suppressWarnings) {
-                warn(t.getMessage());
-            }
+            getLog().warn(t.getMessage());
         });
     }
 
-    protected Maven parseMaven(Path baseDir, ExecutionContext ctx) {
+    private static RawRepositories buildRawRepositories(List<Repository> repositoriesToMap) {
+        if (repositoriesToMap == null) {
+            return null;
+        }
+
+        RawRepositories rawRepositories = new RawRepositories();
+        List<RawRepositories.Repository> transformedRepositories = repositoriesToMap.stream().map(r -> new RawRepositories.Repository(
+                r.getId(),
+                r.getUrl(),
+                r.getReleases() == null ? null : new RawRepositories.ArtifactPolicy(Boolean.toString(r.getReleases().isEnabled())),
+                r.getSnapshots() == null ? null : new RawRepositories.ArtifactPolicy(Boolean.toString(r.getSnapshots().isEnabled()))
+        )).collect(toList());
+        rawRepositories.setRepositories(transformedRepositories);
+        return rawRepositories;
+    }
+
+    private MavenSettings buildSettings() {
+        MavenExecutionRequest mer = new DefaultMavenExecutionRequest();
+
+        MavenSettings.Profiles profiles = new MavenSettings.Profiles();
+        profiles.setProfiles(
+                mer.getProfiles().stream().map(p -> new MavenSettings.Profile(
+                                p.getId(),
+                                p.getActivation() == null ? null : new ProfileActivation(
+                                        p.getActivation().isActiveByDefault(),
+                                        p.getActivation().getJdk(),
+                                        p.getActivation().getProperty() == null ? null : new ProfileActivation.Property(
+                                                p.getActivation().getProperty().getName(),
+                                                p.getActivation().getProperty().getValue()
+                                        )
+                                ),
+                                buildRawRepositories(p.getRepositories())
+                        )
+                ).collect(toList()));
+
+        MavenSettings.ActiveProfiles activeProfiles = new MavenSettings.ActiveProfiles();
+        activeProfiles.setActiveProfiles(mer.getActiveProfiles());
+
+        MavenSettings.Mirrors mirrors = new MavenSettings.Mirrors();
+        mirrors.setMirrors(
+                mer.getMirrors().stream().map(m -> new MavenSettings.Mirror(
+                        m.getId(),
+                        m.getUrl(),
+                        m.getMirrorOf(),
+                        null,
+                        null
+                )).collect(toList())
+        );
+
+        MavenSettings.Servers servers = new MavenSettings.Servers();
+        servers.setServers(mer.getServers().stream().map(s -> {
+            return new MavenSettings.Server(
+                    s.getId(),
+                    s.getUsername(),
+                    null //TODO: Support SettingsDecrypter to Retrieve Passwords for Private Servers.
+            );
+        }).collect(toList()));
+
+        return new MavenSettings(mer.getLocalRepositoryPath().toString(), profiles, activeProfiles, mirrors, servers);
+    }
+
+    public Xml.Document parseMaven(ExecutionContext ctx) {
         List<Path> allPoms = new ArrayList<>();
         allPoms.add(baseDir);
-
-        // children
-        /*
-         * if (project.getCollectedProjects() != null) {
-         * project.getCollectedProjects().stream() .filter(collectedProject ->
-         * collectedProject != project) .map(collectedProject ->
-         * collectedProject.getFile().toPath()) .forEach(allPoms::add); }
-         * 
-         * MavenProject parent = project.getParent(); while (parent != null &&
-         * parent.getFile() != null) { allPoms.add(parent.getFile().toPath()); parent =
-         * parent.getParent(); }
-         */
 
         MavenParser.Builder mavenParserBuilder = MavenParser.builder()
                 .mavenConfig(baseDir.resolve(".mvn/maven.config"));
 
-        /*
-         * if (pomCacheEnabled) { try { if (pomCacheDirectory == null) { //Default
-         * directory in the RocksdbMavenPomCache is ".rewrite-cache"
-         * mavenParserBuilder.cache(new
-         * RocksdbMavenPomCache(Paths.get(System.getProperty("user.home")))); } else {
-         * mavenParserBuilder.cache(new
-         * RocksdbMavenPomCache(Paths.get(pomCacheDirectory))); } } catch (Exception e)
-         * { getLog().
-         * warn("Unable to initialize RocksdbMavenPomCache, falling back to InMemoryMavenPomCache"
-         * ); getLog().debug(e); mavenParserBuilder.cache(new InMemoryMavenPomCache());
-         * } }
-         */
+        MavenSettings settings = buildSettings();
+        MavenExecutionContextView mavenExecutionContext = MavenExecutionContextView.view(ctx);
+        mavenExecutionContext.setMavenSettings(settings);
 
-        Path mavenSettings = Paths.get(System.getProperty("user.home")).resolve(".m2/settings.xml");
-        if (mavenSettings.toFile().exists()) {
-            MavenSettings settings = MavenSettings.parse(new org.openrewrite.Parser.Input(mavenSettings, () -> {
-                try {
-                    return Files.newInputStream(mavenSettings);
-                } catch (IOException e) {
-                    warn("Unable to load Maven settings from user home directory. Skipping.", e);
-                    return null;
-                }
-            }), ctx);
-            if (settings != null) {
-                new MavenExecutionContextView(ctx).setMavenSettings(settings);
-                if (settings.getActiveProfiles() != null) {
-                    mavenParserBuilder
-                            .activeProfiles(settings.getActiveProfiles().getActiveProfiles().toArray(new String[]{}));
-                }
-            }
-        }
+        mavenParserBuilder.activeProfiles(settings.getActiveProfiles().getActiveProfiles().toArray(new String[]{}));
 
-        try {
-            // suppressing warnings down to debug log level is temporary while we work out
-            // the kinks in maven dependency resolution
-            suppressWarnings = true;
-            return mavenParserBuilder.build().parse(allPoms, baseDir, ctx).iterator().next();
-        } finally {
-            suppressWarnings = false;
-        }
+        Xml.Document maven = mavenParserBuilder
+                .build()
+                .parse(allPoms, baseDir, ctx)
+                .iterator()
+                .next();
+
+        return maven;
     }
 
-    protected static List<Path> listJavaSources(String sourceDirectory) {
+    public static List<Path> listJavaSources(String sourceDirectory) {
         File sourceDirectoryFile = new File(sourceDirectory);
         if (!sourceDirectoryFile.exists()) {
             return emptyList();
@@ -261,6 +285,11 @@ class rewrite implements Callable<Integer> {
         var env = environment();
 
         var recipe = env.activateRecipes(activeRecipes);
+        if (recipe.getRecipeList().size() == 0) {
+            getLog().warn("No recipes were activated. " +
+                    "Activate a recipe on the command line with '--recipes com.fully.qualified.RecipeClassName'");
+            return new ResultsContainer(baseDir, emptyList());
+        }
 
         List<NamedStyles> styles;
         styles = env.activateStyles(activeStyles);
@@ -287,11 +316,9 @@ class rewrite implements Callable<Integer> {
         javaSourcePaths.forEach(path -> javaSources.addAll(listJavaSources(path)));
 
         ExecutionContext ctx = executionContext();
-        info("Parsing Java files... in " + javaSources);
+        info("Parsing Java files in " + javaSources);
 
-        Path baseDir = Path.of(".").toAbsolutePath(); // TODO: proper basedir?
-
-        List<SourceFile> sourceFiles = new ArrayList<>(JavaParser.fromJavaVersion().relaxedClassTypeMatching(true)
+        List<SourceFile> sourceFiles = new ArrayList<>(JavaParser.fromJavaVersion()
                 .styles(styles)
                 .classpath(new HashSet<String>().stream().distinct().map(java.nio.file.Paths::get).collect(toList()))
                 .logCompilationWarningsAndErrors(true).build().parse(javaSources, baseDir, ctx));
@@ -337,14 +364,22 @@ class rewrite implements Callable<Integer> {
 
         if (recipeTypes.contains(MavenVisitor.class)) {
             info("Parsing POM...");
-            Maven pomAst = parseMaven(baseDir, ctx);
+            Xml.Document pomAst = parseMaven(ctx);
             sourceFiles.add(pomAst);
         } else {
             info("Skipping Maven POM files because there are no active Maven recipes.");
         }
 
         info("Running recipe(s)...");
-        List<Result> results = recipe.run(sourceFiles, ctx);
+        List<Result> results = recipe.run(sourceFiles, ctx).getResults().stream()
+                .filter(source -> {
+                    // Remove ASTs originating from generated files
+                    if (source.getBefore() != null) {
+                        return !source.getBefore().getMarkers().findFirst(Generated.class).isPresent();
+                    }
+                    return true;
+                })
+                .collect(toList());
 
         return new ResultsContainer(baseDir, results);
 
@@ -354,9 +389,34 @@ class rewrite implements Callable<Integer> {
         return this;
     }
 
+    // Source: https://sourcegraph.com/github.com/openrewrite/rewrite-maven-plugin@v5.39.1/-/blob/src/main/java/org/openrewrite/maven/AbstractRewriteBaseRunMojo.java?L418-425
     protected void logRecipesThatMadeChanges(Result result) {
-        for (Recipe recipe : result.getRecipesThatMadeChanges()) {
-            getLog().warn("    " + recipe.getName());
+        String indent = "    ";
+        String prefix = "    ";
+        for (RecipeDescriptor recipeDescriptor : result.getRecipeDescriptorsThatMadeChanges()) {
+            logRecipe(recipeDescriptor, prefix);
+            prefix = prefix + indent;
+        }
+    }
+
+    // Source: https://sourcegraph.com/github.com/openrewrite/rewrite-maven-plugin@v5.39.1/-/blob/src/main/java/org/openrewrite/maven/AbstractRewriteBaseRunMojo.java?L427-445
+    private void logRecipe(RecipeDescriptor rd, String prefix) {
+        StringBuilder recipeString = new StringBuilder(prefix + rd.getName());
+        if (!rd.getOptions().isEmpty()) {
+            String opts = rd.getOptions().stream().map(option -> {
+                        if (option.getValue() != null) {
+                            return option.getName() + "=" + option.getValue();
+                        }
+                        return null;
+                    }
+            ).filter(Objects::nonNull).collect(joining(", "));
+            if (!opts.isEmpty()) {
+                recipeString.append(": {").append(opts).append("}");
+            }
+        }
+        getLog().warn(recipeString.toString());
+        for (RecipeDescriptor rchild : rd.getRecipeList()) {
+            logRecipe(rchild, prefix + "    ");
         }
     }
 
@@ -421,31 +481,31 @@ class rewrite implements Callable<Integer> {
         if (results.isNotEmpty()) {
             for (Result result : results.generated) {
                 assert result.getAfter() != null;
-                getLog().warn("Generated new file " +
-                        result.getAfter().getSourcePath().normalize() +
-                        " by:");
+                getLog().warn("Generated new file "
+                        + result.getAfter().getSourcePath().normalize()
+                        + " by:");
                 logRecipesThatMadeChanges(result);
             }
             for (Result result : results.deleted) {
                 assert result.getBefore() != null;
-                getLog().warn("Deleted file " +
-                        result.getBefore().getSourcePath().normalize() +
-                        " by:");
+                getLog().warn("Deleted file "
+                        + result.getBefore().getSourcePath().normalize()
+                        + " by:");
                 logRecipesThatMadeChanges(result);
             }
             for (Result result : results.moved) {
                 assert result.getAfter() != null;
                 assert result.getBefore() != null;
-                getLog().warn("File has been moved from " +
-                        result.getBefore().getSourcePath().normalize() + " to " +
-                        result.getAfter().getSourcePath().normalize() + " by:");
+                getLog().warn("File has been moved from "
+                        + result.getBefore().getSourcePath().normalize() + " to "
+                        + result.getAfter().getSourcePath().normalize() + " by:");
                 logRecipesThatMadeChanges(result);
             }
             for (Result result : results.refactoredInPlace) {
                 assert result.getBefore() != null;
-                getLog().warn("Changes have been made to " +
-                        result.getBefore().getSourcePath().normalize() +
-                        " by:");
+                getLog().warn("Changes have been made to "
+                        + result.getBefore().getSourcePath().normalize()
+                        + " by:");
                 logRecipesThatMadeChanges(result);
             }
 
@@ -456,7 +516,8 @@ class rewrite implements Callable<Integer> {
                     assert result.getAfter() != null;
                     try (BufferedWriter sourceFileWriter = Files.newBufferedWriter(
                             results.getProjectRoot().resolve(result.getAfter().getSourcePath()))) {
-                        sourceFileWriter.write(result.getAfter().print());
+                        Charset charset = result.getAfter().getCharset();
+                        sourceFileWriter.write(new String(result.getAfter().printAll().getBytes(charset), charset));
                     }
                 }
                 for (Result result : results.deleted) {
@@ -482,7 +543,8 @@ class rewrite implements Callable<Integer> {
                     //noinspection ResultOfMethodCallIgnored
                     parentDir.mkdirs();
                     try (BufferedWriter sourceFileWriter = Files.newBufferedWriter(afterLocation)) {
-                        sourceFileWriter.write(result.getAfter().print());
+                        Charset charset = result.getAfter().getCharset();
+                        sourceFileWriter.write(new String(result.getAfter().printAll().getBytes(charset), charset));
                     }
                 }
                 for (Result result : results.refactoredInPlace) {
@@ -490,7 +552,8 @@ class rewrite implements Callable<Integer> {
                     try (BufferedWriter sourceFileWriter = Files.newBufferedWriter(
                             results.getProjectRoot().resolve(result.getBefore().getSourcePath()))) {
                         assert result.getAfter() != null;
-                        sourceFileWriter.write(result.getAfter().print());
+                        Charset charset = result.getAfter().getCharset();
+                        sourceFileWriter.write(new String(result.getAfter().printAll().getBytes(charset), charset));
                     }
                 }
             } catch (IOException e) {
@@ -538,12 +601,7 @@ class rewrite implements Callable<Integer> {
         }
     }
 
-    public static void main(String... args) {
-        int exitCode = new CommandLine(new rewrite()).execute(args);
-        System.exit(exitCode);
-    }
-
-    public static RecipeDescriptor getRecipeDescriptor(String recipe, Collection<RecipeDescriptor> recipeDescriptors)  {
+    public static RecipeDescriptor getRecipeDescriptor(String recipe, Collection<RecipeDescriptor> recipeDescriptors) {
         return recipeDescriptors.stream()
                 .filter(r -> r.getName().equalsIgnoreCase(recipe))
                 .findAny()
@@ -576,33 +634,18 @@ class rewrite implements Callable<Integer> {
         @Option(names = "recursion", defaultValue = "0")
         int recursion;
 
-        /**
-         * Whether to enter an interactive shell to explore available recipes. For example:<br>
-         * {@code ./mvnw rewrite:discover -Dinteractive}
-         */
-        // @Option(names = "interactive", defaultValue = "false")
-        //boolean interactive;
-
-        // @Component
-        // private Prompter prompter;
-
         rewrite getLog() {
             return rewrite;
         }
 
         @Override
-        public Integer call()  {
+        public Integer call() {
             Environment env = rewrite.environment();
             Collection<RecipeDescriptor> availableRecipeDescriptors = env.listRecipeDescriptors();
             if (recipe != null) {
                 RecipeDescriptor rd = getRecipeDescriptor(recipe, availableRecipeDescriptors);
                 writeRecipeDescriptor(rd, detail, 0, 0);
-            } /*else if (interactive) {
-                getLog().info("Entering interactive mode, Ctrl-C to exit...");
-                RecipeDescriptorTreePrompter treePrompter = new RecipeDescriptorTreePrompter(prompter);
-                RecipeDescriptor rd = treePrompter.execute(availableRecipeDescriptors);
-                writeRecipeDescriptor(rd, true, 0, 0);
-            } */ else {
+            } else {
                 Collection<RecipeDescriptor> activeRecipeDescriptors = new HashSet<>();
                 for (String activeRecipe : rewrite.activeRecipes) {
                     RecipeDescriptor rd = getRecipeDescriptor(activeRecipe, availableRecipeDescriptors);
