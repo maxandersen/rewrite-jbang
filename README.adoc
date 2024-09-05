@@ -7,7 +7,7 @@ It lets you run openrewrite on any kind of project.
 
 How to run: 
 
-1. Install jbang (https://jbang.dev/downloads)
+1. Install jbang (https://jbang.dev/download)
 2. You can list recipes using:
 ```
 jbang rewrite@maxandersen/rewrite-jbang discover
